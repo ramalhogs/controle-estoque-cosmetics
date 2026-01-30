@@ -1,0 +1,17 @@
+.streamlit/
+secrets.toml
+.env
+
+
+*.pdf
+*.csv
+*.xlsx
+
+venv/
+__pycache__/
+*.py[cod]
+
+
+.DS_Store
+.AppleDouble
+.LSOverride

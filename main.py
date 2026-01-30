@@ -1,36 +1,34 @@
 import streamlit as st
 from google import genai
 import pandas as pd
-import plotly.express as px
 import json
 
-# Configurações iniciais
-st.set_page_config(page_title="Nossa Grana", layout="wide")
-st.title("💰 Analisador de Gastos do Casal")
+st.set_page_config(page_title="Finanças Casal", page_icon="💰")
 
-# --- ÁREA DE CONFIGURAÇÃO (SECRETS) ---
-# No Streamlit Cloud, você configuraria isso no painel lateral em "Secrets"
-API_KEY = st.sidebar.text_input("Cole sua API Key do Gemini aqui", type="password")
-
-if not API_KEY:
-    st.info("Por favor, insira sua API Key para começar.")
+# --- BUSCA A CHAVE AUTOMATICAMENTE ---
+# O Streamlit procura primeiro em .streamlit/secrets.toml (local) 
+# ou nas configurações de Secrets (nuvem)
+try:
+    API_KEY = st.secrets["GEMINI_API_KEY"]
+except KeyError:
+    st.error("Chave API não configurada nos Secrets!")
     st.stop()
 
 client = genai.Client(api_key=API_KEY)
 
-# --- UPLOAD ---
-uploaded_file = st.file_uploader("Suba o PDF do seu banco", type=['pdf'])
+# --- RESTO DO CÓDIGO (Interface e Lógica) ---
+st.title("📂 Analisador de Extrato Automático")
+uploaded_file = st.file_uploader("Suba seu PDF bancário", type=['pdf'])
 
 if uploaded_file:
-    if st.button("🚀 Processar Extrato"):
-        with st.spinner("Gemini analisando e categorizando..."):
+    if st.button("Categorizar Gastos"):
+        with st.spinner("IA processando o PDF..."):
             pdf_bytes = uploaded_file.read()
             
             prompt = """
-            Leia as transações deste extrato. Ignore saldos e transferências entre contas próprias se identificar.
-            Extraia: Data, Descrição, Valor (numérico) e Categoria.
-            Categorias permitidas: Mercado, Lazer, Transporte, Saúde, Moradia, Assinaturas, Outros.
-            Retorne APENAS um JSON puro (lista de objetos).
+            Retorne um JSON com os gastos deste extrato.
+            Formato: [{"data": "DD/MM", "descricao": "texto", "valor": 0.0, "setor": "Mercado/Transporte/etc"}]
+            Retorne APENAS o JSON.
             """
 
             response = client.models.generate_content(
@@ -38,28 +36,14 @@ if uploaded_file:
                 contents=[prompt, {"mime_type": "application/pdf", "data": pdf_bytes}]
             )
 
-            try:
-                # Limpeza básica do retorno da IA
-                raw_json = response.text.replace("```json", "").replace("```", "").strip()
-                dados = json.loads(raw_json)
-                
-                # Transformando em DataFrame (Tabela do Python)
-                df = pd.DataFrame(dados)
-                df['valor'] = pd.to_numeric(df['valor'])
+            # Processamento dos dados
+            raw_json = response.text.replace("```json", "").replace("```", "").strip()
+            df = pd.DataFrame(json.loads(raw_json))
+            df['valor'] = pd.to_numeric(df['valor'])
 
-                # --- VISUALIZAÇÃO ---
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    st.subheader("Lista de Gastos")
-                    st.dataframe(df, use_container_width=True)
-
-                with col2:
-                    st.subheader("Gasto por Categoria")
-                    fig = px.pie(df, values='valor', names='categoria', hole=0.4)
-                    st.plotly_chart(fig, use_container_width=True)
-
-                st.metric("Total Gasto", f"R$ {df['valor'].sum():.2f}")
-
-            except Exception as e:
-                st.error(f"Erro ao processar: {e}")
+            # Exibição
+            st.subheader("Soma por Setor")
+            resumo = df.groupby('setor')['valor'].sum().reset_index()
+            st.table(resumo)
+            
+            st.metric("Total Geral", f"R$ {df['valor'].sum():.2f}")
