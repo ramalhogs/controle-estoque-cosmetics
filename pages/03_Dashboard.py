@@ -18,6 +18,10 @@ st.set_page_config(
     layout="wide",
 )
 
+from auth import verificar_senha
+if not verificar_senha():
+    st.stop()
+
 # ── CSS customizado ─────────────────────────────────────────────────
 st.markdown(
     """
@@ -94,7 +98,7 @@ st.markdown(
     """
     <div class="dash-header">
         <h1>📊 Dashboard</h1>
-        <p>Visão geral do estoque, vendas e margens</p>
+        <p>Visão geral de vendas e margens</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -186,23 +190,33 @@ entradas_dia = df_filtrado.groupby("data_dia").agg(
     total_entradas=("id", "count"),
 ).reset_index()
 entradas_dia = entradas_dia.sort_values("data_dia")
+entradas_dia["data_str"] = pd.to_datetime(entradas_dia["data_dia"]).dt.strftime("%d/%m/%Y")
 
 if not entradas_dia.empty:
     fig_dia = px.bar(
         entradas_dia,
-        x="data_dia",
+        x="data_str",
         y="total_quantidade",
         text="total_quantidade",
-        labels={"data_dia": "Data", "total_quantidade": "Quantidade"},
+        labels={"data_str": "Data", "total_quantidade": "Quantidade"},
         color_discrete_sequence=[CORES[0]],
     )
-    fig_dia.update_traces(textposition="outside", textfont_size=12)
+    # cliponaxis=False evita que o número no topo da barra seja cortado
+    fig_dia.update_traces(textposition="outside", textfont_size=12, cliponaxis=False)
+    
+    # type='category' evita que o Plotly tente criar valores decimais para horas/minutos
+    fig_dia.update_xaxes(type="category")
+    
+    # Forçar o limite superior a ser 15% maior que o max do gráfico para dar espaço pro texto
+    max_y = entradas_dia["total_quantidade"].max()
+    
     fig_dia.update_layout(
         **PLOTLY_LAYOUT,
         xaxis_title="",
         yaxis_title="Itens registrados",
         showlegend=False,
         height=350,
+        yaxis_range=[0, max_y * 1.15] if pd.notna(max_y) else None
     )
     st.plotly_chart(fig_dia, use_container_width=True)
 else:
@@ -249,7 +263,7 @@ with col_chart1:
             **PLOTLY_LAYOUT,
             barmode="group",
             height=300,
-            legend=dict(orientation="h", y=-0.15),
+            legend=dict(orientation="h", y=1.1, xanchor="center", x=0.5),
             yaxis_title="",
             xaxis_title="Preço médio (R$)",
         )
@@ -299,7 +313,7 @@ with col_chart2:
             **PLOTLY_LAYOUT,
             barmode="group",
             height=300,
-            legend=dict(orientation="h", y=-0.15),
+            legend=dict(orientation="h", y=1.1, xanchor="center", x=0.5),
             yaxis_title="",
             xaxis_title="Preço médio (R$)",
         )
@@ -314,70 +328,6 @@ with col_chart2:
                 unsafe_allow_html=True,
             )
 
-# ═══════════════════════════════════════════════════════════════════
-#  TABELA DE ESTOQUE COM CONTROLES
-# ═══════════════════════════════════════════════════════════════════
-st.markdown("---")
-st.markdown("#### 📦 Estoque atual")
-st.caption("Use os botões ➖/➕ para ajuste rápido ou ✏️ para definir valor exato.")
-
-if not catalogo:
-    st.info("Nenhum produto com entradas registradas.")
-else:
-    for produto in catalogo:
-        nome = produto["nome"]
-        estoque = produto.get("estoque_atual", 0) or 0
-
-        # Verificar se este produto passa nos filtros
-        produto_entradas = df_filtrado[df_filtrado["nome"] == nome]
-        if produto_entradas.empty and (filtro_marca != "Todas" or filtro_cat != "Todas"):
-            continue
-
-        # Cor do indicador
-        if estoque > 5:
-            cor_hex = "#00B894"
-        elif estoque > 0:
-            cor_hex = "#FDCB6E"
-        else:
-            cor_hex = "#FF6B6B"
-
-        col_name, col_stock, col_minus, col_plus, col_set = st.columns([3, 1.5, 0.7, 0.7, 1.5])
-
-        with col_name:
-            st.markdown(f"**{nome}**")
-
-        with col_stock:
-            st.markdown(
-                f'<div style="font-size: 1.4rem; font-weight: 700; color: {cor_hex}; text-align: center; padding-top: 0.2rem;">{estoque}</div>',
-                unsafe_allow_html=True,
-            )
-
-        with col_minus:
-            if st.button("➖", key=f"minus_{produto['id']}", help="Diminuir 1"):
-                if estoque > 0:
-                    ajustar_estoque(nome, -1)
-                    st.rerun()
-
-        with col_plus:
-            if st.button("➕", key=f"plus_{produto['id']}", help="Aumentar 1"):
-                ajustar_estoque(nome, 1)
-                st.rerun()
-
-        with col_set:
-            with st.popover("✏️ Definir"):
-                novo_valor = st.number_input(
-                    f"Estoque de {nome}",
-                    min_value=0,
-                    value=estoque,
-                    step=1,
-                    key=f"set_{produto['id']}",
-                )
-                if st.button("Salvar", key=f"save_{produto['id']}", use_container_width=True):
-                    atualizar_estoque(nome, novo_valor)
-                    st.rerun()
-
-        st.divider()
-
 # ── Sidebar ─────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 📦 Estoque App")
@@ -387,9 +337,10 @@ with st.sidebar:
         **Navegação:**
         - 🏠 **Início** — Pesquisa
         - ➕ **Cadastro** — Nova entrada
-        - 📊 **Dashboard** — Gráficos e estoque
+        - 📊 **Dashboard** — Gráficos
+        - 📦 **Estoque** — Controle atual
         - ⚙️ **Gerenciar** — Configurações
         """
     )
     st.markdown("---")
-    st.caption("v2.1 • Controle de Estoque")
+    st.caption("v2.2 • Controle de Estoque")

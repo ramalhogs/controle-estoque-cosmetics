@@ -10,6 +10,10 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+from auth import verificar_senha
+if not verificar_senha():
+    st.stop()
+
 # ── CSS customizado ─────────────────────────────────────────────────
 st.markdown(
     """
@@ -273,9 +277,10 @@ with st.sidebar:
         **Navegação:**
         - 🏠 **Início** — Pesquisa
         - ➕ **Cadastro** — Nova entrada
-        - 📊 **Dashboard** — Gráficos e estoque
         - ⚙️ **Gerenciar** — Configurações
+        - 📊 **Dashboard** — Gráficos
+        - 📦 **Estoque** — Controle atual
         """
     )
     st.markdown("---")
-    st.caption("v2.0 • Controle de Estoque")
+    st.caption("v2.2 • Controle de Estoque")

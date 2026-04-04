@@ -19,6 +19,10 @@ st.set_page_config(
     layout="centered",
 )
 
+from auth import verificar_senha
+if not verificar_senha():
+    st.stop()
+
 # ── CSS customizado ─────────────────────────────────────────────────
 st.markdown(
     """
@@ -297,10 +301,11 @@ with st.sidebar:
         **Navegação:**
         - 🏠 **Início** — Pesquisa
         - ➕ **Cadastro** — Nova entrada
-        - 📊 **Dashboard** — Gráficos e estoque
+        - 📊 **Dashboard** — Gráficos
+        - 📦 **Estoque** — Controle atual
         - ⚙️ **Gerenciar** — Configurações
         """
     )
     st.markdown("---")
-    st.caption("v2.1 • Controle de Estoque")
+    st.caption("v2.2 • Controle de Estoque")
 
