@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from database.models import buscar_produtos, listar_todos, listar_marcas, listar_categorias
+from database.models import buscar_produtos, listar_todos, listar_marcas, listar_categorias, listar_nomes_catalogo
 
 # ── Configuração da página ──────────────────────────────────────────
 st.set_page_config(
@@ -119,6 +119,7 @@ st.markdown(
 try:
     marcas_disponiveis = listar_marcas()
     categorias_disponiveis = listar_categorias()
+    nomes_catalogo = listar_nomes_catalogo()
 except Exception as e:
     st.error(f"❌ Erro ao conectar com o banco de dados.\n\n`{e}`")
     st.stop()
@@ -126,11 +127,12 @@ except Exception as e:
 # ── Barra de pesquisa e filtros ─────────────────────────────────────
 col_search, col_marca, col_categoria = st.columns([3, 1.5, 1.5])
 with col_search:
-    termo_pesquisa = st.text_input(
+    filtro_nome = st.selectbox(
         "📝 Nome do produto",
-        placeholder="Digite o nome do produto...",
+        options=["Todos"] + nomes_catalogo,
         key="search_input",
     )
+    termo_pesquisa = filtro_nome if filtro_nome != "Todos" else ""
 with col_marca:
     filtro_marca = st.selectbox(
         "🏷️ Marca",
@@ -173,13 +175,18 @@ if total_produtos > 0:
     df["margem_pct"] = ((df["preco_revenda"] - df["preco_compra"]) / df["preco_compra"] * 100).round(1)
     margem_media = df["margem_pct"].mean()
     ticket_medio_revenda = df["preco_revenda"].mean()
+    total_itens = int(df["quantidade"].sum()) if "quantidade" in df.columns else total_produtos
 
     st.markdown(
         f"""
         <div class="metric-row">
             <div class="metric-card">
                 <div class="value">{total_produtos}</div>
-                <div class="label">{"Produto encontrado" if total_produtos == 1 else "Produtos encontrados"}</div>
+                <div class="label">{"Entrada" if total_produtos == 1 else "Entradas"}</div>
+            </div>
+            <div class="metric-card">
+                <div class="value">{total_itens}</div>
+                <div class="label">Itens registrados</div>
             </div>
             <div class="metric-card">
                 <div class="value">{margem_media:.1f}%</div>
@@ -200,6 +207,7 @@ if total_produtos > 0:
     for produto in produtos:
         marca = produto.get("marca", "—")
         categoria = produto.get("categoria") or "—"
+        quantidade = produto.get("quantidade", 1) or 1
         data_utc = pd.to_datetime(produto["data_cadastro"], utc=True)
         data = (data_utc - pd.Timedelta(hours=3)).strftime("%d/%m/%Y %H:%M")
         margem = ((produto["preco_revenda"] - produto["preco_compra"]) / produto["preco_compra"] * 100)
@@ -217,7 +225,7 @@ if total_produtos > 0:
                 f"""
                 <div style="padding: 0.3rem 0;">
                     <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 0.3rem;">
-                        {produto["nome"]}
+                        {quantidade}x {produto["nome"]}
                     </div>
                     <div>{badges_html}</div>
                     <div style="color: #666; font-size: 0.8rem; margin-top: 0.3rem;">📅 {data}</div>
@@ -264,9 +272,10 @@ with st.sidebar:
         """
         **Navegação:**
         - 🏠 **Início** — Pesquisa
-        - ➕ **Cadastro** — Novo produto
-        - ⚙️ **Gerenciar** — Excluir e configurar
+        - ➕ **Cadastro** — Nova entrada
+        - 📊 **Dashboard** — Gráficos e estoque
+        - ⚙️ **Gerenciar** — Configurações
         """
     )
     st.markdown("---")
-    st.caption("v1.2 • Controle de Estoque")
+    st.caption("v2.0 • Controle de Estoque")

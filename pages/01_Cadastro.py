@@ -1,5 +1,11 @@
 import streamlit as st
-from database.models import adicionar_produto, listar_marcas, listar_categorias
+from database.models import (
+    adicionar_produto,
+    listar_marcas,
+    listar_categorias,
+    listar_nomes_catalogo,
+    adicionar_ao_catalogo,
+)
 
 # ── Configuração da página ──────────────────────────────────────────
 st.set_page_config(
@@ -85,8 +91,8 @@ st.markdown(
 st.markdown(
     """
     <div class="form-header">
-        <h1>➕ Cadastro de Produto</h1>
-        <p>Registre um novo produto com preços de compra e revenda</p>
+        <h1>➕ Cadastro de Entrada</h1>
+        <p>Registre uma compra de produto com quantidade e preços</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -96,6 +102,7 @@ st.markdown(
 try:
     marcas_disponiveis = listar_marcas()
     categorias_disponiveis = listar_categorias()
+    produtos_catalogo = listar_nomes_catalogo()
 except Exception as e:
     st.error(f"❌ Erro ao carregar opções do banco.\n\n`{e}`")
     st.stop()
@@ -104,14 +111,28 @@ if not marcas_disponiveis:
     st.warning("⚠️ Nenhuma marca cadastrada. Vá em **Gerenciar** para adicionar marcas.")
     st.stop()
 
-# ── Formulário ──────────────────────────────────────────────────────
-with st.form("form_cadastro", clear_on_submit=True):
-    nome = st.text_input(
-        "📝 Nome do Produto",
+# ── Seleção de produto ──────────────────────────────────────────────
+OPCAO_NOVO = "➕ Criar novo produto..."
+opcoes_produto = produtos_catalogo + [OPCAO_NOVO]
+
+produto_selecionado = st.selectbox(
+    "📦 Produto",
+    options=opcoes_produto,
+    key="produto_select",
+    help="Selecione um produto existente ou crie um novo",
+)
+
+# Se "Criar novo", mostrar campo de texto
+nome_novo_produto = None
+if produto_selecionado == OPCAO_NOVO:
+    nome_novo_produto = st.text_input(
+        "📝 Nome do novo produto",
         placeholder="Ex: Desodorante Roll-on Kaiak",
-        key="nome_input",
+        key="novo_produto_input",
     )
 
+# ── Formulário ──────────────────────────────────────────────────────
+with st.form("form_cadastro", clear_on_submit=True):
     col_marca, col_categoria = st.columns(2)
     with col_marca:
         marca = st.selectbox(
@@ -126,21 +147,27 @@ with st.form("form_cadastro", clear_on_submit=True):
             key="categoria_input",
         )
 
-    col1, col2 = st.columns(2)
-    with col1:
+    col_qty, col_compra, col_revenda = st.columns([1, 1.5, 1.5])
+    with col_qty:
+        quantidade_str = st.text_input(
+            "📊 Quantidade",
+            placeholder="Ex: 5",
+            key="quantidade_input",
+        )
+    with col_compra:
         preco_compra_str = st.text_input(
             "💰 Preço de Compra (R$)",
             placeholder="Ex: 25.90",
             key="preco_compra_input",
         )
-    with col2:
+    with col_revenda:
         preco_revenda_str = st.text_input(
             "💵 Preço de Revenda (R$)",
             placeholder="Ex: 49.90",
             key="preco_revenda_input",
         )
 
-    # Tentar converter preços para preview
+    # Tentar converter para preview
     try:
         preco_compra = float(preco_compra_str.replace(",", ".")) if preco_compra_str else 0.0
     except ValueError:
@@ -149,11 +176,16 @@ with st.form("form_cadastro", clear_on_submit=True):
         preco_revenda = float(preco_revenda_str.replace(",", ".")) if preco_revenda_str else 0.0
     except ValueError:
         preco_revenda = 0.0
+    try:
+        quantidade = int(quantidade_str) if quantidade_str else 0
+    except ValueError:
+        quantidade = 0
 
-    # Preview da margem antes de salvar
+    # Preview
     if preco_compra > 0 and preco_revenda > 0:
         margem = ((preco_revenda - preco_compra) / preco_compra) * 100
         lucro = preco_revenda - preco_compra
+        lucro_total = lucro * max(quantidade, 1)
         cor_margem = "#00B894" if margem > 0 else "#FF6B6B"
 
         st.markdown(
@@ -166,7 +198,11 @@ with st.form("form_cadastro", clear_on_submit=True):
                         <div class="value" style="color: {cor_margem}">R$ {lucro:,.2f}</div>
                     </div>
                     <div>
-                        <div class="label">Margem de lucro</div>
+                        <div class="label">Lucro total ({max(quantidade, 1)} un.)</div>
+                        <div class="value" style="color: {cor_margem}">R$ {lucro_total:,.2f}</div>
+                    </div>
+                    <div>
+                        <div class="label">Margem</div>
                         <div class="margem" style="color: {cor_margem}">{margem:.1f}%</div>
                     </div>
                 </div>
@@ -176,39 +212,56 @@ with st.form("form_cadastro", clear_on_submit=True):
         )
 
     submitted = st.form_submit_button(
-        "✅ Cadastrar Produto",
+        "✅ Registrar Entrada",
         use_container_width=True,
         type="primary",
     )
 
-# ── Processamento do formulário ─────────────────────────────────────
+# ── Processamento ───────────────────────────────────────────────────
 if submitted:
     cat_value = categoria if categoria != "— Nenhuma —" else None
+
+    # Determinar nome do produto
+    if produto_selecionado == OPCAO_NOVO:
+        nome_final = nome_novo_produto
+    else:
+        nome_final = produto_selecionado
 
     # Converter preços
     try:
         preco_compra = float(preco_compra_str.replace(",", ".")) if preco_compra_str else 0.0
     except ValueError:
-        preco_compra = -1  # Forçar erro de validação
+        preco_compra = -1
     try:
         preco_revenda = float(preco_revenda_str.replace(",", ".")) if preco_revenda_str else 0.0
     except ValueError:
         preco_revenda = -1
+    try:
+        quantidade = int(quantidade_str) if quantidade_str else 0
+    except ValueError:
+        quantidade = 0
 
     # Validações
-    if not nome or not nome.strip():
+    if not nome_final or not nome_final.strip():
         st.error("❌ O nome do produto é obrigatório.")
+    elif quantidade <= 0:
+        st.error("❌ A quantidade deve ser maior que zero.")
     elif preco_compra <= 0:
         st.error("❌ O preço de compra deve ser um número válido maior que zero. Ex: 25.90")
     elif preco_revenda <= 0:
         st.error("❌ O preço de revenda deve ser um número válido maior que zero. Ex: 49.90")
     else:
         try:
+            # Se é produto novo, criar no catálogo primeiro
+            if produto_selecionado == OPCAO_NOVO:
+                adicionar_ao_catalogo(nome_final)
+
             produto = adicionar_produto(
-                nome=nome,
+                nome=nome_final,
                 preco_compra=preco_compra,
                 preco_revenda=preco_revenda,
                 marca=marca,
+                quantidade=quantidade,
                 categoria=cat_value,
             )
             margem_final = ((preco_revenda - preco_compra) / preco_compra) * 100
@@ -217,9 +270,9 @@ if submitted:
             st.markdown(
                 f"""
                 <div class="success-box">
-                    <h3>✅ Produto cadastrado com sucesso!</h3>
+                    <h3>✅ Entrada registrada com sucesso!</h3>
                     <p>
-                        <strong>{nome.strip()}</strong> ({marca})<br>
+                        <strong>{quantidade}x {nome_final.strip()}</strong> ({marca})<br>
                         Categoria: {cat_display}<br>
                         Compra: R$ {preco_compra:,.2f} &nbsp;|&nbsp;
                         Revenda: R$ {preco_revenda:,.2f} &nbsp;|&nbsp;
@@ -229,9 +282,13 @@ if submitted:
                 """,
                 unsafe_allow_html=True,
             )
-            st.balloons()
+
         except Exception as e:
-            st.error(f"❌ Erro ao cadastrar produto: `{e}`")
+            error_msg = str(e)
+            if "duplicate key" in error_msg.lower() or "unique" in error_msg.lower():
+                st.error("❌ Esse produto já existe no catálogo. Selecione-o na lista.")
+            else:
+                st.error(f"❌ Erro ao registrar entrada: `{e}`")
 
 # ── Sidebar ─────────────────────────────────────────────────────────
 with st.sidebar:
@@ -241,8 +298,10 @@ with st.sidebar:
         """
         **Navegação:**
         - 🏠 **Início** — Pesquisa
-        - ➕ **Cadastro** — Novo produto
+        - ➕ **Cadastro** — Nova entrada
+        - 📊 **Dashboard** — Gráficos e estoque
+        - ⚙️ **Gerenciar** — Configurações
         """
     )
     st.markdown("---")
-    st.caption("v1.1 • Controle de Estoque")
+    st.caption("v2.0 • Controle de Estoque")

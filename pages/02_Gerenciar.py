@@ -2,6 +2,7 @@ import streamlit as st
 from database.models import (
     listar_todos,
     deletar_produto,
+    renomear_produto,
     listar_marcas_completo,
     adicionar_marca,
     deletar_marca,
@@ -107,18 +108,36 @@ with tab_produtos:
             data_utc = pd.to_datetime(produto["data_cadastro"], utc=True)
             data = (data_utc - pd.Timedelta(hours=3)).strftime("%d/%m/%Y %H:%M")
 
-            col_name, col_details, col_btn = st.columns([3, 4, 1])
+            col_name, col_details, col_edit, col_btn = st.columns([3, 4, 0.7, 0.7])
 
             with col_name:
                 st.markdown(f"**{produto['nome']}**")
                 st.caption(f"{marca} • {categoria}")
 
             with col_details:
-                st.caption(
-                    f"Compra: R$ {produto['preco_compra']:,.2f} | "
-                    f"Revenda: R$ {produto['preco_revenda']:,.2f} | "
+                st.markdown(
+                    f'<span style="color: #888; font-size: 0.85rem;">'
+                    f"Compra: R\\$ {produto['preco_compra']:,.2f} | "
+                    f"Revenda: R\\$ {produto['preco_revenda']:,.2f} | "
                     f"{data}"
+                    f"</span>",
+                    unsafe_allow_html=True,
                 )
+
+            with col_edit:
+                with st.popover("✏️", help="Renomear produto"):
+                    novo_nome = st.text_input(
+                        "Novo nome",
+                        value=produto["nome"],
+                        key=f"rename_{produto['id']}",
+                    )
+                    if st.button("Salvar", key=f"save_rename_{produto['id']}", use_container_width=True):
+                        if novo_nome and novo_nome.strip() and novo_nome.strip() != produto["nome"]:
+                            try:
+                                renomear_produto(produto["nome"], novo_nome)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Erro: `{e}`")
 
             with col_btn:
                 if st.button("🗑️", key=f"del_prod_{produto['id']}", help="Excluir"):
@@ -277,9 +296,11 @@ with st.sidebar:
         """
         **Navegação:**
         - 🏠 **Início** — Pesquisa
-        - ➕ **Cadastro** — Novo produto
-        - ⚙️ **Gerenciar** — Excluir e configurar
+        - ➕ **Cadastro** — Nova entrada
+        - 📊 **Dashboard** — Gráficos e estoque
+        - ⚙️ **Gerenciar** — Configurações
         """
     )
     st.markdown("---")
-    st.caption("v1.2 • Controle de Estoque")
+    st.caption("v2.1 • Controle de Estoque")
+
